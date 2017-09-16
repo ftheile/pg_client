@@ -3,7 +3,7 @@ src = $(wildcard *.c)
 obj = $(src:.c=.o)
 dep = $(obj:.o=.d)  # one dependency file for each source
 
-CFLAGS = -Wall
+CFLAGS = -Wall -Wextra
 LDFLAGS = -lpq
 
 .PHONY: all
