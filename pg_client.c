@@ -9,7 +9,7 @@ int main(int argc, char* argv[])
 		conn = PQconnectdb(argv[1]);
 		if (PQstatus(conn) == CONNECTION_OK) {
 			PGresult* res;
-			res = PQexec(conn, "SELECT ts, value FROM my_data ORDER BY ts");
+			res = PQexec(conn, "SELECT data_id, name, len  FROM params ORDER BY data_id");
 			if (PQresultStatus(res) == PGRES_TUPLES_OK) {
 				int rows = PQntuples(res);
 				int cols = PQnfields(res);
