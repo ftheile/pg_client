@@ -29,11 +29,11 @@ int main(int argc, char* argv[])
 				}
 				PQclear(res);
 			} else {
-				printf("Error PQexec()\n");
+				printf(PQerrorMessage(conn));
 				ret = -3;
 			}
 		} else {
-			printf("Error PQconnectdb()\n");
+			printf(PQerrorMessage(conn));
 			ret = -2;
 		}
 		PQfinish(conn);
