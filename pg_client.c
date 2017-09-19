@@ -1,5 +1,11 @@
 #include <libpq-fe.h>
+#include <string.h>
+#include <time.h>
+#ifdef BINARY_TRANSFER
+#include <arpa/inet.h>
+#endif
 
+#define ARG_CNT 3
 
 int main(int argc, char* argv[])
 {
@@ -9,25 +15,45 @@ int main(int argc, char* argv[])
 		conn = PQconnectdb(argv[1]);
 		if (PQstatus(conn) == CONNECTION_OK) {
 			PGresult* res;
-			res = PQexec(conn, "SELECT data_id, name, len  FROM params ORDER BY data_id");
-			if (PQresultStatus(res) == PGRES_TUPLES_OK) {
-				int rows = PQntuples(res);
-				int cols = PQnfields(res);
-				int r, c;
-				// Column names:
-				for (c=0; c<cols; c++) {
-					printf("%s ", PQfname(res, c));
-				}
-				printf("\n");
+			ExecStatusType est;
 
-				// Data:
-				for (r=0; r<rows; r++) {
-					for (c=0; c<cols; c++) {
-						printf("%s ", PQgetvalue(res, r, c));
-					}
-					printf("\n");
-				}
+			// Create prepared statement
+			res = PQprepare(conn, "add_value", "INSERT INTO results_float (data_id, ts, value) VALUES ($1, $2, $3)", 0, NULL);
+			est = PQresultStatus(res); 
+			PQclear(res);
+			if (est == PGRES_COMMAND_OK) {
+				// Execute the prepared statement:
+				int data_id = 1;
+				char ts[32];
+				float value = 4.321;
+				time_t t = time(NULL);
+				strftime(ts, sizeof(ts), "%F %T", localtime(&t));
+
+#ifdef BINARY_TRANSFER
+				// nbo_...: Temporary variables in network-byte-order
+				uint32_t nbo_value = htonl(*(uint32_t*)(&value));
+				uint32_t nbo_data_id = htonl(data_id);
+
+				const char* paramValues[ARG_CNT] = { (char*)&nbo_data_id, ts, (char*)&nbo_value };
+				const int paramLengths[ARG_CNT] = { sizeof(nbo_data_id), 0, sizeof(nbo_value) };
+				const int paramFormats[ARG_CNT] = { 1, 0, 1 };
+#else
+				char str_value[16];
+				char str_data_id[16];
+				sprintf(str_value, "%f", value);
+				sprintf(str_data_id, "%d", data_id);
+
+				const char* paramValues[ARG_CNT] = { str_data_id, ts, str_value };
+				#define paramFormats NULL
+				#define paramLengths NULL
+#endif
+				res = PQexecPrepared(conn, "add_value", ARG_CNT, paramValues, paramLengths, paramFormats, 0);
+				est = PQresultStatus(res); 
 				PQclear(res);
+				if (est != PGRES_COMMAND_OK) {
+					printf(PQerrorMessage(conn));
+					ret = -4;
+				}
 			} else {
 				printf(PQerrorMessage(conn));
 				ret = -3;
