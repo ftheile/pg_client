@@ -3,7 +3,7 @@ src = $(wildcard *.c)
 obj = $(src:.c=.o)
 dep = $(obj:.o=.d)  # one dependency file for each source
 
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -I/usr/include/postgresql
 LDFLAGS = -lpq
 
 .PHONY: all
