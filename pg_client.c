@@ -1,55 +1,85 @@
 #include <libpq-fe.h>
 #include <string.h>
 #include <time.h>
-#ifdef BINARY_TRANSFER
-#include <arpa/inet.h>
-#endif
 #include <stdlib.h>
+#include <stdint.h>
 
-#define ARG_CNT 3
+#ifdef BINARY_TRANSFER
+	#if ((defined _WIN64) || (defined _WIN32))
+		#include <winsock2.h>
+	#else
+		#include <arpa/inet.h>
+	#endif
+#endif
+
+#define ARG_CNT 4
 
 int main(int argc, char* argv[])
 {
 	int ret = 0;
-	if (argc == 3) {
+	if (argc == ARG_CNT + 1) {
 		PGconn* conn;
 		conn = PQconnectdb(argv[1]);
 		if (PQstatus(conn) == CONNECTION_OK) {
 			PGresult* res;
-			ExecStatusType est;
+			ExecStatusType status;
 
-			// Create prepared statement
-			res = PQprepare(conn, "add_value", "INSERT INTO results_float (ppid, ts, value) VALUES ($1, $2, $3)", 0, NULL);
-			est = PQresultStatus(res); 
+			/* Create prepared statement.
+			 * Parameters:
+			 *   $1: GENI destination address of pump (e.g. "35")
+			 *   $2: Name of data ID (e.g. "eData_ManuelFlow")
+			 *   $3: Timestamp in ISO 8601 format (e.g. "YYYY-MM-DD hh:mm:ss")
+			 *   $4: Value (e.g. "3.14")
+			 */
+			res = PQprepare(conn, "insert_float", "INSERT INTO results_float (ppid, ts, value) SELECT ppid, $3, $4 FROM get_pump_params WHERE dest_addr = $1 AND name = $2", ARG_CNT, NULL);
+			status = PQresultStatus(res); 
 			PQclear(res);
-			if (est == PGRES_COMMAND_OK) {
+			if (status == PGRES_COMMAND_OK) {
 				// Execute the prepared statement:
-				int data_id = 1;
 				char ts[32];
 				time_t t = time(NULL);
 				strftime(ts, sizeof(ts), "%F %T", localtime(&t));
 
 #ifdef BINARY_TRANSFER
-				// nbo_...: Temporary variables in network-byte-order
-				float value = atof(argv[2]);
-				uint32_t nbo_value = htonl(*(uint32_t*)(&value));
-				uint32_t nbo_data_id = htonl(data_id);
+				// Convert binary data to network byte-order:
+				int dest_addr = htonl(atoi(argv[2]));
+				float v = atof(argv[4]);
+				unsigned int value = htonl(*(uint32_t*)&v);
 
-				const char* paramValues[ARG_CNT] = { (char*)&nbo_data_id, ts, (char*)&nbo_value };
-				const int paramLengths[ARG_CNT] = { sizeof(nbo_data_id), 0, sizeof(nbo_value) };
-				const int paramFormats[ARG_CNT] = { 1, 0, 1 };
+				const char* paramValues[ARG_CNT] = {
+					(const char*)&dest_addr,  // $1: dest_addr
+					argv[3],                  // $2: data_id
+					ts,						  // $3: ts
+					(const char*)&value		  // $4: value
+				};
+
+				const int paramLengths[ARG_CNT] = {
+					sizeof(dest_addr),  // $1
+					0,                  // $2
+					0,                  // $3
+					sizeof(value)       // $4
+				};
+
+				const int paramFormats[ARG_CNT] = {
+					1,  // $1
+					0,  // $2
+					0,  // $3
+					1   // $4
+				};
 #else
-				char str_data_id[16];
-				sprintf(str_data_id, "%d", data_id);
-
-				const char* paramValues[ARG_CNT] = { str_data_id, ts, argv[2] };
+				const char* paramValues[ARG_CNT] = {
+					argv[2],  // $1: dest_addr
+					argv[3],  // $2: data_id
+					ts,       // $3: ts
+					argv[4]   // $4: value
+				};
 				#define paramFormats NULL
 				#define paramLengths NULL
 #endif
-				res = PQexecPrepared(conn, "add_value", ARG_CNT, paramValues, paramLengths, paramFormats, 0);
-				est = PQresultStatus(res); 
+				res = PQexecPrepared(conn, "insert_float", ARG_CNT, paramValues, paramLengths, paramFormats, 0);
+				status = PQresultStatus(res); 
 				PQclear(res);
-				if (est != PGRES_COMMAND_OK) {
+				if (status != PGRES_COMMAND_OK) {
 					printf(PQerrorMessage(conn));
 					ret = -4;
 				}
@@ -64,7 +94,7 @@ int main(int argc, char* argv[])
 		PQfinish(conn);
 	} else {
 		printf("Usage:\n");
-		printf("  %s <connection string> <value>\n", argv[0]);
+		printf("  %s <connection string> <dest_addr> <data_id> <value>\n", argv[0]);
 		ret = -1;
 	}
 	return ret;
