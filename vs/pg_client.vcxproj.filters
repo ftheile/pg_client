@@ -15,11 +15,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\pg_client.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <None Include="..\README.md" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\README.md" />
+    <ClCompile Include="..\main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
